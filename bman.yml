@@ -1,0 +1,24 @@
+services:
+  bconman:
+    image: node:18-alpine
+    container_name: bconman
+    working_dir: /bconman
+    volumes:
+      - ./bconman:/bconman
+      - ./blackbox:/blackbox
+    ports:
+      - "9116:3000"
+    command: >
+      sh -c "npm install && npm start"
+    environment:
+      - NODE_ENV=production
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.26.0
+    container_name: blackbox
+    ports:
+      - "9115:9115"
+    volumes:
+      - ./blackbox:/blackbox
+    command:
+      - '--config.file=/blackbox/blackbox_config.yml'

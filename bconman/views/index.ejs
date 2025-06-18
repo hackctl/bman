@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blackbox Module Config Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="/dist/styles.css">
+    <style>
+        .module-card {
+            margin-bottom: 1rem;
+            border: 1px solid rgba(0,0,0,.125);
+            border-radius: 0.25rem;
+        }
+        
+        .card-body {
+            overflow: hidden;
+            border-top: 1px solid rgba(0,0,0,.125);
+        }
+
+        .module-header {
+            user-select: none;
+            cursor: pointer;
+            padding: 0.75rem 1rem;
+            background-color: #f8f9fa;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #modulesList {
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+            padding-right: 10px;
+            padding-bottom: 1rem;
+        }
+
+        #modulesList::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #modulesList::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        #modulesList::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        #modulesList::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* Container styles to ensure proper scrolling */
+        .col-md-6 {
+            height: calc(100vh - 100px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .col-md-6 .card {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .col-md-6 .card-body {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #modulesList {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        /* Remove extra spacing when collapsed */
+        .module-card .card-body[style*="display: none"] {
+            margin: 0;
+            padding: 0;
+            height: 0;
+            border: none;
+        }
+
+        .module-card .card-body[style*="display: none"] + .module-header {
+            margin-bottom: 0;
+        }
+
+        .module-card .card-body[style*="display: none"] ~ .module-card {
+            margin-top: 0.5rem;
+        }
+
+        /* Ensure proper spacing between expanded modules */
+        .module-card:not(:last-child) {
+            margin-bottom: 1rem;
+        }
+
+        /* Remove margin from last module */
+        .module-card:last-child {
+            margin-bottom: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center mb-4">Blackbox Module Config Manager</h1>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2>Modules</h2>
+                    <div>
+                        <label for="configFile" class="btn btn-primary me-2">
+                            <i class="bi bi-upload"></i> Upload Config
+                            <input type="file" id="configFile" accept=".yml,.yaml" style="display: none;" onchange="handleFileUpload(this)">
+                        </label>
+                        <button class="btn btn-primary" onclick="addNewModule()">
+                            <i class="bi bi-plus-lg"></i> Add Module
+                        </button>
+                    </div>
+                </div>
+                <div id="modulesList"></div>
+            </div>
+            <div class="col-md-6">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h2>Configuration Output</h2>
+                    <button class="btn btn-success" onclick="saveConfig()">
+                        <i class="bi bi-save"></i> Save Config
+                    </button>
+                </div>
+                <div id="configOutput" class="json-output" contenteditable="true" spellcheck="false"></div>
+            </div>
+        </div>
+    </div>
+
+    <template id="moduleTemplate">
+        <div class="module-card">
+            <div class="module-header" onclick="toggleModuleConfig(this)">
+                <h3 class="module-name-display">Module</h3>
+                <div>
+                    <i class="bi bi-chevron-up toggle-icon"></i>
+                    <i class="bi bi-x-lg remove-module ms-2" onclick="removeModule(this)"></i>
+                </div>
+            </div>
+            <div class="card-body">
+                <form class="module-form">
+                    <div class="stage1">
+                        <div class="mb-3">
+                            <label class="form-label">Module Name</label>
+                            <input type="text" class="form-control module-name" oninput="updateModuleDisplay(this)" placeholder="Enter module name">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Module Type</label>
+                            <select class="form-control module-type" onchange="handleModuleTypeChange(this)" required>
+                                <option value="">Select module type</option>
+                                <option value="http">HTTP</option>
+                                <option value="tcp">TCP</option>
+                                <option value="ping">Ping</option>
+                            </select>
+                        </div>
+                        <div class="d-flex justify-content-end">
+                            <button type="button" class="btn btn-primary next-stage">Next</button>
+                        </div>
+                    </div>
+                    <div class="stage2">
+                        <div class="probe-fields"></div>
+                        <div class="d-flex justify-content-between">
+                            <button type="button" class="btn btn-secondary prev-stage">Back</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <script src="/dist/main.js"></script>
+    <script>
+        let defaultConfig = null;
+
+        // Load default configuration from server
+        async function loadDefaultConfig() {
+            try {
+                const response = await fetch('/api/defaults');
+                if (response.ok) {
+                    defaultConfig = await response.json();
+                    console.log('Loaded default config:', defaultConfig);
+                    
+                    // Display the default configuration in the output area
+                    const yamlConfig = jsyaml.dump(defaultConfig, {
+                        indent: 2,
+                        lineWidth: -1,
+                        noRefs: true,
+                        sortKeys: false
+                    });
+                    document.getElementById('configOutput').textContent = yamlConfig;
+                    
+                    // Populate form fields with defaults
+                    populateFormWithDefaults();
+                } else {
+                    console.warn('Failed to load default configuration');
+                }
+            } catch (error) {
+                console.error('Error loading default configuration:', error);
+            }
+        }
+
+        // Populate form fields with default configuration
+        function populateFormWithDefaults() {
+            if (!defaultConfig || !defaultConfig.modules) return;
+            
+            // Clear existing modules
+            const modulesList = document.getElementById('modulesList');
+            modulesList.innerHTML = '';
+            
+            // Create modules from default config
+            Object.entries(defaultConfig.modules).forEach(([moduleName, moduleConfig]) => {
+                // Add new module
+                window.addNewModule();
+                
+                // Get the newly created module card
+                const moduleCard = modulesList.lastElementChild;
+                if (!moduleCard) return;
+                
+                const form = moduleCard.querySelector('.module-form');
+                if (!form) return;
+                
+                // Set basic module info
+                const nameInput = form.querySelector('.module-name');
+                const typeSelect = form.querySelector('.module-type');
+                
+                if (nameInput) nameInput.value = moduleName;
+                if (typeSelect) {
+                    typeSelect.value = moduleConfig.prober;
+                    // Trigger module type change to show appropriate fields
+                    typeSelect.dispatchEvent(new Event('change'));
+                }
+                
+                // Move to stage 2
+                const nextButton = form.querySelector('.next-stage');
+                if (nextButton) nextButton.click();
+                
+                // Set module-specific fields
+                const type = moduleConfig.prober;
+                if (type === 'http') {
+                    const httpConfig = moduleConfig.http;
+                    if (httpConfig) {
+                        const timeoutInput = form.querySelector('.timeout');
+                        const methodSelect = form.querySelector('.http-method');
+                        const statusCodesInput = form.querySelector('.valid-status-codes');
+                        
+                        if (timeoutInput) timeoutInput.value = moduleConfig.timeout || '5s';
+                        if (methodSelect) methodSelect.value = httpConfig.method || 'GET';
+                        if (statusCodesInput) {
+                            let statusCodes = httpConfig.valid_status_codes;
+                            if (typeof statusCodes === 'number') {
+                                statusCodes = [statusCodes];
+                            }
+                            statusCodesInput.value = statusCodes?.join(',') || '';
+                        }
+                        
+                        // Handle HTTP versions
+                        if (httpConfig.valid_http_versions) {
+                            form.querySelectorAll('.http-version').forEach(checkbox => {
+                                checkbox.checked = httpConfig.valid_http_versions.includes(checkbox.value);
+                            });
+                        }
+                        
+                        // Handle IP protocol settings
+                        const preferredIPProtocol = form.querySelector('.preferred-ip-protocol');
+                        const ipProtocolFallback = form.querySelector('.ip-protocol-fallback');
+                        
+                        if (preferredIPProtocol) preferredIPProtocol.value = httpConfig.preferred_ip_protocol || 'ip4';
+                        if (ipProtocolFallback) ipProtocolFallback.checked = httpConfig.ip_protocol_fallback || false;
+                        
+                        // Handle other boolean settings
+                        const noFollowRedirects = form.querySelector('.no-follow-redirects');
+                        const failIfSsl = form.querySelector('.fail-if-ssl');
+                        const failIfNotSsl = form.querySelector('.fail-if-not-ssl');
+                        
+                        if (noFollowRedirects) noFollowRedirects.checked = httpConfig.no_follow_redirects || false;
+                        if (failIfSsl) failIfSsl.checked = httpConfig.fail_if_ssl || false;
+                        if (failIfNotSsl) failIfNotSsl.checked = httpConfig.fail_if_not_ssl || false;
+                    }
+                } else if (type === 'tcp') {
+                    const tcpConfig = moduleConfig.tcp;
+                    if (tcpConfig) {
+                        const timeoutInput = form.querySelector('.timeout');
+                        const preferredIPProtocol = form.querySelector('.preferred-ip-protocol');
+                        const ipProtocolFallback = form.querySelector('.ip-protocol-fallback');
+                        
+                        if (timeoutInput) timeoutInput.value = moduleConfig.timeout || '5s';
+                        if (preferredIPProtocol) preferredIPProtocol.value = tcpConfig.preferred_ip_protocol || 'ip4';
+                        if (ipProtocolFallback) ipProtocolFallback.checked = tcpConfig.ip_protocol_fallback || false;
+                    }
+                } else if (type === 'ping') {
+                    const pingConfig = moduleConfig.ping;
+                    if (pingConfig) {
+                        const timeoutInput = form.querySelector('.timeout');
+                        const packetCountInput = form.querySelector('.packet-count');
+                        
+                        if (timeoutInput) timeoutInput.value = moduleConfig.timeout || '5s';
+                        if (packetCountInput) packetCountInput.value = pingConfig.packet_count || 4;
+                    }
+                }
+                
+                // Update module display name
+                if (nameInput) nameInput.dispatchEvent(new Event('input'));
+            });
+        }
+
+        // Wait for the main.js to load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Load default configuration first
+            loadDefaultConfig();
+        });
+
+        async function saveConfig() {
+            try {
+                if (typeof window.generateConfigObject !== 'function') {
+                    throw new Error('Configuration generator not loaded');
+                }
+
+                const config = window.generateConfigObject();
+                
+                // Send configuration to server to save
+                const response = await fetch('/api/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(config)
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    alert('Configuration saved successfully to blackbox_config.yml');
+                    
+                    // Reload the default configuration to reflect changes
+                    await loadDefaultConfig();
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to save configuration');
+                }
+            } catch (error) {
+                console.error('Error saving config:', error);
+                alert('Failed to save configuration: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html> 
