@@ -12,6 +12,8 @@ services:
       sh -c "npm install && npm start"
     environment:
       - NODE_ENV=production
+    networks:
+      - bman
 
   blackbox:
     image: prom/blackbox-exporter:v0.26.0
@@ -22,3 +24,9 @@ services:
       - ./blackbox:/blackbox
     command:
       - '--config.file=/blackbox/blackbox_config.yml'
+    networks:
+      - bman
+
+networks:
+  bman:
+    driver: bridge

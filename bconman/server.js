@@ -3,6 +3,7 @@ const bodyParser = require('body-parser');
 const path = require('path');
 const yaml = require('js-yaml');
 const fs = require('fs');
+const http = require('http');
 
 const app = express();
 const port = 3000;
@@ -97,6 +98,55 @@ app.post('/download', (req, res) => {
         console.error('Error:', error);
         res.status(500).send('Error generating YAML');
     }
+});
+
+// Endpoint to reload blackbox exporter configuration
+app.post('/api/reload', (req, res) => {
+    const options = {
+        hostname: 'blackbox',
+        port: 9115,
+        path: '/-/reload',
+        method: 'POST',
+        headers: {
+            'Host': 'blackbox:9115'
+        }
+    };
+
+    const reloadReq = http.request(options, (reloadRes) => {
+        let data = '';
+        
+        reloadRes.on('data', (chunk) => {
+            data += chunk;
+        });
+
+        reloadRes.on('end', () => {
+            if (reloadRes.statusCode === 200) {
+                console.log('Blackbox exporter configuration reloaded successfully');
+                res.json({ 
+                    success: true, 
+                    message: 'Blackbox exporter reloaded successfully' 
+                });
+            } else {
+                console.error('Failed to reload blackbox exporter:', data);
+                res.status(reloadRes.statusCode).json({ 
+                    success: false, 
+                    error: 'Failed to reload blackbox exporter',
+                    details: data
+                });
+            }
+        });
+    });
+
+    reloadReq.on('error', (error) => {
+        console.error('Error reloading blackbox exporter:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to connect to blackbox exporter',
+            details: error.message 
+        });
+    });
+
+    reloadReq.end();
 });
 
 function generateConfig(formData) {

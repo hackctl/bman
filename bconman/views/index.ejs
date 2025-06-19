@@ -128,9 +128,14 @@
             <div class="col-md-6">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h2>Configuration Output</h2>
-                    <button class="btn btn-success" onclick="saveConfig()">
-                        <i class="bi bi-save"></i> Save Config
-                    </button>
+                    <div>
+                        <button class="btn btn-success me-2" onclick="saveConfig()">
+                            <i class="bi bi-save"></i> Save
+                        </button>
+                        <button class="btn btn-warning" onclick="reloadConfig()">
+                            <i class="bi bi-arrow-repeat"></i> Reload
+                        </button>
+                    </div>
                 </div>
                 <div id="configOutput" class="json-output" contenteditable="true" spellcheck="false"></div>
             </div>
@@ -338,17 +343,34 @@
 
                 if (response.ok) {
                     const result = await response.json();
-                    alert('Configuration saved successfully to blackbox_config.yml');
-                    
-                    // Reload the default configuration to reflect changes
-                    await loadDefaultConfig();
+                    if (result.success) {
+                        alert('Configuration saved successfully to blackbox_config.yml');
+                        // Trigger reload after successful save
+                        await reloadConfig();
+                    } else {
+                        throw new Error(result.error || 'Failed to save configuration');
+                    }
                 } else {
                     const error = await response.json();
                     throw new Error(error.error || 'Failed to save configuration');
                 }
             } catch (error) {
-                console.error('Error saving config:', error);
+                console.error('Error:', error);
                 alert('Failed to save configuration: ' + error.message);
+            }
+        }
+
+        async function reloadConfig() {
+            try {
+                const response = await fetch('/api/reload', { method: 'POST' });
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    alert('Blackbox exporter reloaded successfully.');
+                } else {
+                    alert('Failed to reload exporter: ' + (result.details || result.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error reloading exporter: ' + error.message);
             }
         }
     </script>
