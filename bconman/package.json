@@ -15,6 +15,7 @@
     "webpack-cli": "^5.1.4",
     "css-loader": "^6.8.1",
     "style-loader": "^3.3.3",
-    "html-webpack-plugin": "^5.5.3"
+    "html-webpack-plugin": "^5.5.3",
+    "multer": "^1.4.5-lts.1"
   }
 }

@@ -4,9 +4,11 @@ const path = require('path');
 const yaml = require('js-yaml');
 const fs = require('fs');
 const http = require('http');
+const multer = require('multer');
 
 const app = express();
 const port = 3000;
+const upload = multer();
 
 // Load default configuration from blackbox_config.yml
 let defaultConfig = {};
@@ -147,6 +149,38 @@ app.post('/api/reload', (req, res) => {
     });
 
     reloadReq.end();
+});
+
+// Endpoint to create TLS folder
+app.get('/api/create-tls-folder', (req, res) => {
+    const moduleName = req.query.module;
+    if (!moduleName) return res.json({ success: false, error: 'No module name provided' });
+    const dirPath = path.join('/blackbox/tls', moduleName);
+    fs.mkdir(dirPath, { recursive: true }, (err) => {
+        if (err) return res.json({ success: false, error: err.message });
+        res.json({ success: true });
+    });
+});
+
+// Endpoint to delete TLS folder
+app.get('/api/delete-tls-folder', (req, res) => {
+    const moduleName = req.query.module;
+    if (!moduleName) return res.json({ success: false, error: 'No module name provided' });
+    const dirPath = path.join('/blackbox/tls', moduleName);
+    fs.rm(dirPath, { recursive: true, force: true }, (err) => {
+        if (err) return res.json({ success: false, error: err.message });
+        res.json({ success: true });
+    });
+});
+
+app.post('/api/upload-tls-file', upload.single('file'), (req, res) => {
+    console.log('UPLOAD TLS FILE endpoint hit');
+    const moduleName = req.query.module;
+    const dirPath = path.join(__dirname, '..', 'blackbox', 'tls', moduleName);
+    const filePath = path.join(dirPath, req.file.originalname);
+    fs.mkdirSync(dirPath, { recursive: true });
+    fs.writeFileSync(filePath, req.file.buffer);
+    res.json({ success: true });
 });
 
 function generateConfig(formData) {

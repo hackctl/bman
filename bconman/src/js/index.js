@@ -4,6 +4,9 @@ import '../css/style.css';
 // Module counter for unique module names
 let moduleCounter = 0;
 
+// Store uploaded TLS filenames per module
+const tlsFilenames = {};
+
 // Probe field templates
 const probeFields = {
     http: `
@@ -109,15 +112,15 @@ const probeFields = {
         <div class='tls-config' style='display: none;'>
             <div class='mb-3'>
                 <label class='form-label'>CA File</label>
-                <input type='text' class='form-control tls-ca-file' placeholder='/etc/blackbox/certs/ca.pem'>
+                <input type='file' class='form-control tls-ca-file-upload' data-type='ca'>
             </div>
             <div class='mb-3'>
                 <label class='form-label'>Certificate File</label>
-                <input type='text' class='form-control tls-cert-file' placeholder='/etc/blackbox/certs/client.pem'>
+                <input type='file' class='form-control tls-cert-file-upload' data-type='cert'>
             </div>
             <div class='mb-3'>
                 <label class='form-label'>Key File</label>
-                <input type='text' class='form-control tls-key-file' placeholder='/etc/blackbox/certs/client.key'>
+                <input type='file' class='form-control tls-key-file-upload' data-type='key'>
             </div>
             <div class='mb-3'>
                 <label class='form-label'>Server Name</label>
@@ -152,15 +155,15 @@ const probeFields = {
         <div class='tls-config' style='display: none;'>
             <div class='mb-3'>
                 <label class='form-label'>CA File</label>
-                <input type='text' class='form-control tls-ca-file' placeholder='/etc/blackbox/certs/ca.pem'>
+                <input type='file' class='form-control tls-ca-file-upload' data-type='ca'>
             </div>
             <div class='mb-3'>
                 <label class='form-label'>Certificate File</label>
-                <input type='text' class='form-control tls-cert-file' placeholder='/etc/blackbox/certs/client.pem'>
+                <input type='file' class='form-control tls-cert-file-upload' data-type='cert'>
             </div>
             <div class='mb-3'>
                 <label class='form-label'>Key File</label>
-                <input type='text' class='form-control tls-key-file' placeholder='/etc/blackbox/certs/client.key'>
+                <input type='file' class='form-control tls-key-file-upload' data-type='key'>
             </div>
             <div class='mb-3'>
                 <label class='form-label'>Server Name</label>
@@ -190,15 +193,15 @@ const probeFields = {
         <div class='tls-config' style='display: none;'>
             <div class='mb-3'>
                 <label class='form-label'>CA File</label>
-                <input type='text' class='form-control tls-ca-file' placeholder='/etc/blackbox/certs/ca.pem'>
+                <input type='file' class='form-control tls-ca-file-upload' data-type='ca'>
             </div>
             <div class='mb-3'>
                 <label class='form-label'>Certificate File</label>
-                <input type='text' class='form-control tls-cert-file' placeholder='/etc/blackbox/certs/client.pem'>
+                <input type='file' class='form-control tls-cert-file-upload' data-type='cert'>
             </div>
             <div class='mb-3'>
                 <label class='form-label'>Key File</label>
-                <input type='text' class='form-control tls-key-file' placeholder='/etc/blackbox/certs/client.key'>
+                <input type='file' class='form-control tls-key-file-upload' data-type='key'>
             </div>
             <div class='mb-3'>
                 <label class='form-label'>Server Name</label>
@@ -247,10 +250,29 @@ window.setupModuleEventListeners = function(moduleCard) {
     // Add input/change listeners to all form elements
     form.addEventListener('input', updateJsonOutput);
     form.addEventListener('change', updateJsonOutput);
+
+    // Add TLS file upload listeners
+    setupTlsFileUploadListeners(moduleCard);
 };
 
 window.removeModule = function(button) {
     const moduleCard = button.closest('.module-card');
+    // Check if TLS was enabled for this module
+    const tlsCheckbox = moduleCard.querySelector('.enable-tls');
+    const moduleName = moduleCard.querySelector('.module-name').value || 'default_module';
+    if (tlsCheckbox && tlsCheckbox.checked) {
+        // Delete the TLS folder for this module
+        fetch(`/api/delete-tls-folder?module=${encodeURIComponent(moduleName)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    alert('Failed to delete TLS folder: ' + data.error);
+                }
+            })
+            .catch(err => {
+                alert('Error deleting TLS folder: ' + err.message);
+            });
+    }
     moduleCard.remove();
     updateJsonOutput();
 };
@@ -274,6 +296,9 @@ window.toggleTlsConfig = function(checkbox) {
     const tlsConfig = moduleCard.querySelector('.tls-config');
     tlsConfig.style.display = checkbox.checked ? 'block' : 'none';
     updateJsonOutput();
+    if (checkbox.checked) {
+        setupTlsFileUploadListeners(moduleCard);
+    }
 };
 
 window.toggleModuleConfig = function(element) {
@@ -330,24 +355,19 @@ window.generateConfigObject = function() {
 
             // Add TLS config if enabled
             if (form.querySelector('.enable-tls').checked) {
+                const serverNameInput = form.querySelector('.tls-server-name');
+                const serverNameValue = serverNameInput ? serverNameInput.value : '';
                 httpConfig.tls = true;
-                const tlsConfig = {
-                    ca_file: form.querySelector('.tls-ca-file').value,
-                    cert_file: form.querySelector('.tls-cert-file').value,
-                    key_file: form.querySelector('.tls-key-file').value,
-                    server_name: form.querySelector('.tls-server-name').value
+                // Use actual uploaded filenames if available, else fallback to hardcoded
+                const caFile = tlsFilenames[moduleName]?.ca || 'ca.pem';
+                const certFile = tlsFilenames[moduleName]?.cert || 'client.pem';
+                const keyFile = tlsFilenames[moduleName]?.key || 'client.key';
+                httpConfig.tls_config = {
+                    ca_file: `/blackbox/tls/${moduleName}/${caFile}`,
+                    cert_file: `/blackbox/tls/${moduleName}/${certFile}`,
+                    key_file: `/blackbox/tls/${moduleName}/${keyFile}`,
+                    server_name: serverNameValue
                 };
-                
-                // Only add non-empty values
-                Object.keys(tlsConfig).forEach(key => {
-                    if (!tlsConfig[key]) {
-                        delete tlsConfig[key];
-                    }
-                });
-                
-                if (Object.keys(tlsConfig).length > 0) {
-                    httpConfig.tls_config = tlsConfig;
-                }
             }
 
             // Headers
@@ -428,24 +448,18 @@ window.generateConfigObject = function() {
 
             // Add TLS config if enabled
             if (form.querySelector('.enable-tls').checked) {
+                const serverNameInput = form.querySelector('.tls-server-name');
+                const serverNameValue = serverNameInput ? serverNameInput.value : '';
                 tcpConfig.tls = true;
-                const tlsConfig = {
-                    ca_file: form.querySelector('.tls-ca-file').value,
-                    cert_file: form.querySelector('.tls-cert-file').value,
-                    key_file: form.querySelector('.tls-key-file').value,
-                    server_name: form.querySelector('.tls-server-name').value
+                const caFile = tlsFilenames[moduleName]?.ca || 'ca.pem';
+                const certFile = tlsFilenames[moduleName]?.cert || 'client.pem';
+                const keyFile = tlsFilenames[moduleName]?.key || 'client.key';
+                tcpConfig.tls_config = {
+                    ca_file: `/blackbox/tls/${moduleName}/${caFile}`,
+                    cert_file: `/blackbox/tls/${moduleName}/${certFile}`,
+                    key_file: `/blackbox/tls/${moduleName}/${keyFile}`,
+                    server_name: serverNameValue
                 };
-                
-                // Only add non-empty values
-                Object.keys(tlsConfig).forEach(key => {
-                    if (!tlsConfig[key]) {
-                        delete tlsConfig[key];
-                    }
-                });
-                
-                if (Object.keys(tlsConfig).length > 0) {
-                    tcpConfig.tls_config = tlsConfig;
-                }
             }
         } else if (type === 'ping') {
             const pingConfig = config.modules[moduleName].ping;
@@ -454,24 +468,18 @@ window.generateConfigObject = function() {
 
             // Add TLS config if enabled
             if (form.querySelector('.enable-tls').checked) {
+                const serverNameInput = form.querySelector('.tls-server-name');
+                const serverNameValue = serverNameInput ? serverNameInput.value : '';
                 pingConfig.tls = true;
-                const tlsConfig = {
-                    ca_file: form.querySelector('.tls-ca-file').value,
-                    cert_file: form.querySelector('.tls-cert-file').value,
-                    key_file: form.querySelector('.tls-key-file').value,
-                    server_name: form.querySelector('.tls-server-name').value
+                const caFile = tlsFilenames[moduleName]?.ca || 'ca.pem';
+                const certFile = tlsFilenames[moduleName]?.cert || 'client.pem';
+                const keyFile = tlsFilenames[moduleName]?.key || 'client.key';
+                pingConfig.tls_config = {
+                    ca_file: `/blackbox/tls/${moduleName}/${caFile}`,
+                    cert_file: `/blackbox/tls/${moduleName}/${certFile}`,
+                    key_file: `/blackbox/tls/${moduleName}/${keyFile}`,
+                    server_name: serverNameValue
                 };
-                
-                // Only add non-empty values
-                Object.keys(tlsConfig).forEach(key => {
-                    if (!tlsConfig[key]) {
-                        delete tlsConfig[key];
-                    }
-                });
-                
-                if (Object.keys(tlsConfig).length > 0) {
-                    pingConfig.tls_config = tlsConfig;
-                }
             }
         }
     });
@@ -711,4 +719,37 @@ window.updateFormFromConfig = function(config) {
             if (nameInput) nameInput.dispatchEvent(new Event('input'));
         });
     }
-}; 
+};
+
+// Add event listeners for TLS file uploads
+function setupTlsFileUploadListeners(moduleCard) {
+    const moduleName = moduleCard.querySelector('.module-name').value || 'default_module';
+    if (!tlsFilenames[moduleName]) tlsFilenames[moduleName] = {};
+    moduleCard.querySelectorAll('.tls-config input[type="file"]').forEach(input => {
+        input.addEventListener('change', function() {
+            const file = this.files[0];
+            if (!file) return;
+            const type = this.getAttribute('data-type');
+            const formData = new FormData();
+            formData.append('file', file);
+            fetch(`/api/upload-tls-file?module=${encodeURIComponent(moduleName)}&type=${encodeURIComponent(type)}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    alert('Failed to upload TLS file: ' + data.error);
+                } else {
+                    // Store the uploaded filename for this module and type
+                    tlsFilenames[moduleName][type] = file.name;
+                    alert('TLS file uploaded successfully.');
+                    updateJsonOutput();
+                }
+            })
+            .catch(err => {
+                alert('Error uploading TLS file: ' + err.message);
+            });
+        });
+    });
+} 

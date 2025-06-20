@@ -14,9 +14,3 @@ modules:
         - HTTP/2.0
       preferred_ip_protocol: ip4
       ip_protocol_fallback: true
-  tcpx:
-    prober: tcp
-    timeout: 15s
-    tcp:
-      preferred_ip_protocol: ip4
-      ip_protocol_fallback: true
