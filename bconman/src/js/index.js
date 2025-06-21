@@ -296,8 +296,39 @@ window.toggleTlsConfig = function(checkbox) {
     const tlsConfig = moduleCard.querySelector('.tls-config');
     tlsConfig.style.display = checkbox.checked ? 'block' : 'none';
     updateJsonOutput();
+    
+    const moduleName = moduleCard.querySelector('.module-name').value || 'default_module';
+    
     if (checkbox.checked) {
+        // Create folder and setup listeners
+        fetch(`/api/create-tls-folder?module=${encodeURIComponent(moduleName)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    alert('Failed to create TLS folder: ' + data.error);
+                }
+            })
+            .catch(err => {
+                alert('Error creating TLS folder: ' + err.message);
+            });
         setupTlsFileUploadListeners(moduleCard);
+    } else {
+        // Delete folder and clear stored filenames
+        fetch(`/api/delete-tls-folder?module=${encodeURIComponent(moduleName)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success) {
+                    alert('Failed to delete TLS folder: ' + data.error);
+                }
+            })
+            .catch(err => {
+                alert('Error deleting TLS folder: ' + err.message);
+            });
+        // Clear stored filenames for this module
+        if (tlsFilenames[moduleName]) {
+            delete tlsFilenames[moduleName];
+        }
+        updateJsonOutput();
     }
 };
 
